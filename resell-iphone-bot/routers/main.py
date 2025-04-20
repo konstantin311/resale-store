@@ -44,49 +44,12 @@ class CategoryStates(StatesGroup):
 
 @router.message(Command("start"))
 async def send_welcome(message: Message, state: FSMContext) -> None:
-    # Проверяем, является ли это возвратом из оплаты
-    if message.text.startswith("/start payment_"):
-        order_id = int(message.text.split("_")[1])
-        logger.info(f"Processing payment return for order {order_id}")
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Получаем данные о заказе
-                async with session.get(f"{API_HOST}/api/api/orders/{order_id}") as order_response:
-                    if order_response.status != 200:
-                        error_text = await order_response.text()
-                        logger.error(f"Error getting order data: {error_text}")
-                        await message.answer(
-                            text="❌ Произошла ошибка при получении данных заказа. Пожалуйста, свяжитесь с поддержкой."
-                        )
-                        return
-                    order_data = await order_response.json()
-                    logger.info(f"Retrieved order data: {order_data}")
-                
-                # Проверяем статус заказа
-                if order_data["status"] == "PAID":
-                    await message.answer(
-                        text="✅ Заказ успешно оплачен! Спасибо за покупку.\n"
-                             "Скоро с вами свяжется продавец для уточнения деталей доставки."
-                    )
-                else:
-                    await message.answer(
-                        text="⏳ Ожидаем подтверждения оплаты от платежной системы.\n"
-                             "Как только оплата будет подтверждена, мы уведомим вас."
-                    )
-        except Exception as e:
-            logger.error(f"Error processing payment return: {e}")
-            await message.answer(
-                text="❌ Произошла ошибка при обработке платежа. Пожалуйста, свяжитесь с поддержкой."
-            )
-        return
-
-    # Остальной код обработки команды /start
+    # Очищаем состояние
     await state.set_state(None)
     await state.clear()
     
-    # Проверяем существование пользователя
-    async with aiohttp.ClientSession() as session:
-        try:
+    try:
+        async with aiohttp.ClientSession() as session:
             # Проверяем существование пользователя
             async with session.get(f"{API_HOST}/api/api/users/telegram/{message.from_user.id}/exists") as exists_response:
                 if exists_response.status == 200:
@@ -113,13 +76,13 @@ async def send_welcome(message: Message, state: FSMContext) -> None:
                             reply_markup=await contact_keyboard(),
                         )
                         await state.set_state(register.Register.CONTACT)
-        except Exception as e:
-            logger.error(f"Error in send_welcome: {str(e)}")
-            await message.answer(
-                text="Ошибка при проверке данных пользователя. Пожалуйста, попробуйте позже.",
-                reply_markup=await contact_keyboard(),
-            )
-            await state.set_state(register.Register.CONTACT)
+    except Exception as e:
+        logger.error(f"Error in send_welcome: {str(e)}")
+        await message.answer(
+            text="Ошибка при проверке данных пользователя. Пожалуйста, попробуйте позже.",
+            reply_markup=await contact_keyboard(),
+        )
+        await state.set_state(register.Register.CONTACT)
 
 @router.callback_query(lambda c: c.data.startswith("pay_order_"))
 async def pay_order(callback_query: CallbackQuery, state: FSMContext) -> None:
@@ -180,7 +143,7 @@ async def pay_order(callback_query: CallbackQuery, state: FSMContext) -> None:
                 
                 payment = await response.json()
                 
-                # Создаем кнопку для перехода к оплате
+                # Создаем кнопки для перехода к оплате и проверки статуса
                 keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -188,27 +151,93 @@ async def pay_order(callback_query: CallbackQuery, state: FSMContext) -> None:
                                 text="💳 Перейти к оплате",
                                 url=payment["confirmation"]["confirmation_url"]
                             )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🔄 Проверить статус оплаты",
+                                callback_data=f"check_payment_{order_id}"
+                            )
                         ]
                     ]
                 )
                 
                 await callback_query.message.edit_text(
                     text=f"Сумма к оплате: {order_data['total']}\n"
-                         f"Для оплаты перейдите по ссылке ниже:",
+                         f"Для оплаты перейдите по ссылке ниже.\n"
+                         f"После оплаты нажмите кнопку 'Проверить статус оплаты'.",
                     reply_markup=keyboard
-                )
-                
-                # Отправляем сообщение о том, что нужно дождаться подтверждения оплаты
-                await callback_query.message.answer(
-                    text="⏳ После оплаты вы будете перенаправлены обратно в бот.\n"
-                         "Как только платеж будет подтвержден, мы уведомим вас."
                 )
     except Exception as e:
         logger.error(f"Error in pay_order: {str(e)}")
         await callback_query.message.answer(
             text="Произошла ошибка при создании платежа. Пожалуйста, попробуйте позже."
         )
-    return 
+    return
+
+@router.callback_query(lambda c: c.data.startswith("check_payment_"))
+async def check_payment(callback_query: CallbackQuery, state: FSMContext) -> None:
+    order_id = int(callback_query.data.split("_")[2])
+    logger.info(f"Checking payment status for order {order_id}")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Получаем данные о заказе
+            async with session.get(f"{API_HOST}/api/api/orders/{order_id}") as order_response:
+                if order_response.status != 200:
+                    error_text = await order_response.text()
+                    logger.error(f"Error getting order data: {error_text}")
+                    await callback_query.message.answer(
+                        text="❌ Произошла ошибка при получении данных заказа. Пожалуйста, свяжитесь с поддержкой."
+                    )
+                    return
+                order_data = await order_response.json()
+                logger.info(f"Retrieved order data: {order_data}")
+            
+            # Проверяем статус заказа
+            if order_data["status"] == "PAID":
+                await callback_query.message.edit_text(
+                    text="✅ Заказ успешно оплачен! Спасибо за покупку.\n"
+                         "Скоро с вами свяжется продавец для уточнения деталей доставки.",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="🔙 Вернуться в главное меню",
+                                    callback_data="back_to_menu"
+                                )
+                            ]
+                        ]
+                    )
+                )
+            else:
+                # Создаем клавиатуру с кнопкой проверки и возврата в меню
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🔄 Проверить оплату заказа",
+                                callback_data=f"check_payment_{order_id}"
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🔙 Вернуться в главное меню",
+                                callback_data="back_to_menu"
+                            )
+                        ]
+                    ]
+                )
+                
+                await callback_query.message.edit_text(
+                    text="⏳ Ожидаем подтверждения оплаты от платежной системы.\n"
+                         "Нажмите кнопку ниже, чтобы проверить статус оплаты.",
+                    reply_markup=keyboard
+                )
+    except Exception as e:
+        logger.error(f"Error checking payment status: {e}")
+        await callback_query.message.answer(
+            text="❌ Произошла ошибка при проверке статуса оплаты. Пожалуйста, свяжитесь с поддержкой."
+        )
 
 @router.callback_query(F.data == "show_filters")
 async def show_filters(callback_query: CallbackQuery, state: FSMContext):
