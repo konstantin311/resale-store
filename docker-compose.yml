@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # FastAPI сервис
+  fastapi-app:
+    build: ./resell-iphone-api
+    ports:
+      - "8015:8015"
+    volumes:
+      - ./resell-iphone-api:/app
+      - ./shared_static:/app/static
+    environment:
+      - DB_NAME=postgres
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - ALLOWED_ORIGINS=*
+      - ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - ALLOWED_HEADERS=*
+      - PAGINATION_LIMIT=10
+    depends_on:
+      - postgres-db
+
+  # PostgreSQL сервис
+  postgres-db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Telegram бот
+  bot:
+    build: ./resell-iphone-bot
+    volumes:
+      - ./resell-iphone-bot:/app
+      - ./shared_static:/app/static
+    environment:
+      - API_HOST=http://fastapi-app:8015  # используем внутреннее имя сервиса
+      # Добавьте другие переменные окружения для бота здесь
+    depends_on:
+      - fastapi-app
+
+volumes:
+  postgres_data:

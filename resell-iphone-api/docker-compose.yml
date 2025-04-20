@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  fastapi-app:
+    build: .
+    ports:
+      - "8015:8015"
+    volumes:
+      - ./:/app
+      - ../shared_static:/app/static
+    environment:
+      - DB_NAME=postgres
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - ALLOWED_ORIGINS=*
+      - ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - ALLOWED_HEADERS=*
+      - PAGINATION_LIMIT=10
+    depends_on:
+      - postgres-db
+
+  postgres-db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data: 
