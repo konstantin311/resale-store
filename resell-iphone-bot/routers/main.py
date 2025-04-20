@@ -62,43 +62,19 @@ async def send_welcome(message: Message, state: FSMContext) -> None:
                     order_data = await order_response.json()
                     logger.info(f"Retrieved order data: {order_data}")
                 
-                # Обновляем статус заказа, сохраняя текущее местоположение
-                update_data = {
-                    "status": "PAID",  # Используем PAID для подтверждения оплаты
-                    "location": order_data.get("location", "CREATED")
-                }
-                logger.info(f"Updating order with data: {update_data}")
-                
-                async with session.patch(
-                    f"{API_HOST}/api/api/orders/{order_id}",
-                    json=update_data
-                ) as status_response:
-                    if status_response.status == 200:
-                        logger.info("Order status updated successfully")
-                        # Помечаем товар как проданный
-                        async with session.patch(
-                            f"{API_HOST}/api/api/items/{order_data['item_id']}",
-                            json={"is_sold": True}
-                        ) as item_response:
-                            if item_response.status == 200:
-                                logger.info("Item marked as sold")
-                                await message.answer(
-                                    text="✅ Заказ успешно оплачен! Спасибо за покупку.\n"
-                                         "Скоро с вами свяжется продавец для уточнения деталей доставки."
-                                )
-                                return
-                            else:
-                                error_text = await item_response.text()
-                                logger.error(f"Error marking item as sold: {error_text}")
-                    else:
-                        error_text = await status_response.text()
-                        logger.error(f"Error updating order status: {error_text}")
-                
-                await message.answer(
-                    text="❌ Произошла ошибка при обновлении статуса заказа. Пожалуйста, свяжитесь с поддержкой."
-                )
+                # Проверяем статус заказа
+                if order_data["status"] == "PAID":
+                    await message.answer(
+                        text="✅ Заказ успешно оплачен! Спасибо за покупку.\n"
+                             "Скоро с вами свяжется продавец для уточнения деталей доставки."
+                    )
+                else:
+                    await message.answer(
+                        text="⏳ Ожидаем подтверждения оплаты от платежной системы.\n"
+                             "Как только оплата будет подтверждена, мы уведомим вас."
+                    )
         except Exception as e:
-            logger.error(f"Error processing payment return: {str(e)}")
+            logger.error(f"Error processing payment return: {e}")
             await message.answer(
                 text="❌ Произошла ошибка при обработке платежа. Пожалуйста, свяжитесь с поддержкой."
             )
@@ -222,91 +198,11 @@ async def pay_order(callback_query: CallbackQuery, state: FSMContext) -> None:
                     reply_markup=keyboard
                 )
                 
-                # Ждем 5 секунд и обновляем статус заказа
-                await asyncio.sleep(5)
-                
-                # Обновляем статус заказа на PAID
-                update_data = {
-                    "status": "PAID",
-                    "delivery_address": order_data.get("delivery_address")
-                }
-                
-                async with session.patch(
-                    f"{API_HOST}/api/api/orders/{order_id}",
-                    json=update_data
-                ) as status_response:
-                    if status_response.status == 200:
-                        # Получаем данные о товаре
-                        async with session.get(f"{API_HOST}/api/api/items/{order_data['item_id']}") as item_response:
-                            if item_response.status == 200:
-                                item_data = await item_response.json()
-                                
-                                # Получаем данные о продавце
-                                async with session.get(f"{API_HOST}/api/api/users/{order_data['seller_id']}") as seller_response:
-                                    if seller_response.status == 200:
-                                        seller_data = await seller_response.json()
-                                        logger.info(f"Received seller data: {seller_data}")
-                                        
-                                        # Проверяем наличие telegram_id
-                                        if 'telegram_id' not in seller_data:
-                                            logger.error("telegram_id not found in seller data")
-                                            return
-                                            
-                                        telegram_id = seller_data['telegram_id']
-                                        logger.info(f"Seller telegram_id: {telegram_id}")
-                                        
-                                        # Отправляем уведомление продавцу
-                                        seller_message = (
-                                            f"🛍️ Новый заказ!\n\n"
-                                            f"📦 Заказ #{order_id}\n"
-                                            f"💰 Сумма: {order_data['total']} RUB\n"
-                                            f"📝 Товар: {item_data['name']}\n"
-                                            f"👤 Покупатель: @{callback_query.from_user.username}\n"
-                                            f"📱 Телефон покупателя: {order_data['buyer_phone']}\n"
-                                            f"🏠 Адрес доставки: {order_data['delivery_address']}\n\n"
-                                            f"Пожалуйста, свяжитесь с покупателем для уточнения деталей доставки."
-                                        )
-                                        
-                                        try:
-                                            logger.info(f"Attempting to send message to seller with telegram_id: {telegram_id}")
-                                            await callback_query.bot.send_message(
-                                                chat_id=telegram_id,
-                                                text=seller_message
-                                            )
-                                            logger.info(f"Successfully sent notification to seller {telegram_id}")
-                                        except Exception as e:
-                                            logger.error(f"Error sending notification to seller: {str(e)}")
-                                            logger.error(f"Error type: {type(e)}")
-                                            logger.error(f"Full error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details available'}")
-                                    else:
-                                        error_text = await seller_response.text()
-                                        logger.error(f"Error getting seller data. Status: {seller_response.status}, Response: {error_text}")
-                                
-                                await callback_query.message.answer(
-                                    text=(
-                                        "✅ Заказ успешно оплачен! Спасибо за покупку.\n"
-                                        "Скоро с вами свяжется продавец для уточнения деталей доставки."
-                                    ),
-                                    reply_markup=InlineKeyboardMarkup(
-                                        inline_keyboard=[
-                                            [
-                                                InlineKeyboardButton(
-                                                    text="🔙 Вернуться в главное меню",
-                                                    callback_data="back_to_menu"
-                                                )
-                                            ]
-                                        ]
-                                    )
-                                )
-                            else:
-                                error_text = await item_response.text()
-                                logger.error(f"Error getting item data: {error_text}")
-                    else:
-                        error_text = await status_response.text()
-                        logger.error(f"Error updating order status: {error_text}")
-                        await callback_query.message.answer(
-                            text="❌ Произошла ошибка при обновлении статуса заказа. Пожалуйста, свяжитесь с поддержкой."
-                        )
+                # Отправляем сообщение о том, что нужно дождаться подтверждения оплаты
+                await callback_query.message.answer(
+                    text="⏳ После оплаты вы будете перенаправлены обратно в бот.\n"
+                         "Как только платеж будет подтвержден, мы уведомим вас."
+                )
     except Exception as e:
         logger.error(f"Error in pay_order: {str(e)}")
         await callback_query.message.answer(
@@ -1034,76 +930,6 @@ async def update_order_status(callback_query: CallbackQuery, state: FSMContext) 
             text="Произошла ошибка при обновлении статуса заказа",
             show_alert=True
         )
-
-# Обработчик уведомлений от Юкассы
-@router.message(F.web_app_data)
-async def handle_yookassa_notification(message: Message, state: FSMContext) -> None:
-    try:
-        # Проверяем подпись уведомления
-        if not verify_yookassa_notification(message.web_app_data.data):
-            logger.error("Invalid Yookassa notification signature")
-            return
-            
-        notification = json.loads(message.web_app_data.data)
-        
-        if notification["event"] == "payment.succeeded":
-            # Получаем данные о заказе
-            order_id = notification["object"]["metadata"]["order_id"]
-            async with aiohttp.ClientSession() as session:
-                # Получаем данные о заказе
-                async with session.get(f"{API_HOST}/api/orders/{order_id}") as order_response:
-                    if order_response.status != 200:
-                        logger.error(f"Error getting order data: {await order_response.text()}")
-                        return
-                    order_data = await order_response.json()
-                
-                # Обновляем статус заказа на PAID
-                async with session.patch(
-                    f"{API_HOST}/api/orders/{order_id}/status",
-                    json={"status": "PAID"}
-                ) as status_response:
-                    if status_response.status != 200:
-                        logger.error(f"Error updating order status: {await status_response.text()}")
-                        return
-                
-                # Помечаем товар как проданный
-                async with session.patch(
-                    f"{API_HOST}/api/items/{order_data['item_id']}",
-                    json={"is_sold": True}
-                ) as item_response:
-                    if item_response.status != 200:
-                        logger.error(f"Error updating item status: {await item_response.text()}")
-                        return
-                
-                # Отправляем уведомление пользователю
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🔙 Вернуться в главное меню",
-                                callback_data="back_to_menu"
-                            )
-                        ]
-                    ]
-                )
-                await message.answer(
-                    text="✅ Платеж успешно проведен! Статус заказа обновлен.",
-                    reply_markup=keyboard
-                )
-        
-        elif notification["event"] == "payment.canceled":
-            # Отправляем уведомление об отмене платежа
-            await message.answer(
-                text="❌ Платеж был отменен или произошла ошибка оплаты."
-            )
-            
-    except Exception as e:
-        logger.error(f"Error handling Yookassa notification: {e}")
-
-def verify_yookassa_notification(data: str) -> bool:
-    # Здесь должна быть реализация проверки подписи уведомления от Юкассы
-    # Для тестирования всегда возвращаем True
-    return True
 
 @router.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(callback_query: CallbackQuery, state: FSMContext):
