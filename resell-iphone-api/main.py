@@ -13,7 +13,7 @@ from core.db.base import Base
 from database_handler import DatabaseHandler, settings, init_tables
 from deps import DatabaseMarker, SettingsMarker
 from settings import Settings
-from api_v1.routers import images, items, categories, users, health
+from api_v1.routers import images, items, categories, users, health, payments
 
 # Настройка логирования
 logger = logging.getLogger("uvicorn.error")
@@ -56,6 +56,7 @@ def register_app(settings: Settings) -> FastAPI:
     # Then register other routers
     app.include_router(api_v1.router, prefix="/api")
     app.include_router(images.router, prefix="/api/v1")
+    app.include_router(payments.router, prefix="/api/v1")
 
     app.add_middleware(
         CORSMiddleware,
