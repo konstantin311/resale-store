@@ -83,7 +83,7 @@ async def process_callback(callback_query: CallbackQuery, state: FSMContext):
     elif callback_query.data == "upload":
         data = await state.get_data()
         # Проверяем наличие всех обязательных полей
-        required_fields = ["name", "price", "currency", "category", "contact", "description"]
+        required_fields = ["name", "price", "currency", "category", "contact", "description", "image"]
         missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
             await callback_query.answer(
@@ -379,8 +379,12 @@ async def process_category(callback_query: CallbackQuery, state: FSMContext):
     if callback_query.data != "create_ad":
         # Получаем ID и название категории
         category_id = callback_query.data.split("_")[1]
-        # Получаем название категории из текста кнопки
-        category_name = callback_query.message.reply_markup.inline_keyboard[0][0].text.replace("📌 ", "")
+        # Получаем название категории из нажатой кнопки
+        for row in callback_query.message.reply_markup.inline_keyboard:
+            for button in row:
+                if button.callback_data == callback_query.data:
+                    category_name = button.text.replace("📌 ", "")
+                    break
         await state.update_data({
             "category": category_id,
             "category_name": category_name
