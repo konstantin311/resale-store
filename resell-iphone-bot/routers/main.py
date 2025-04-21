@@ -195,6 +195,7 @@ async def check_payment(callback_query: CallbackQuery, state: FSMContext) -> Non
             
             # Проверяем статус заказа
             if order_data["status"] == "PAID":
+                # Уведомляем покупателя
                 await callback_query.message.edit_text(
                     text="✅ Заказ успешно оплачен! Спасибо за покупку.\n"
                          "Скоро с вами свяжется продавец для уточнения деталей доставки.",
@@ -209,6 +210,42 @@ async def check_payment(callback_query: CallbackQuery, state: FSMContext) -> Non
                         ]
                     )
                 )
+
+                # Отправляем уведомление продавцу
+                try:
+                    # Получаем информацию о товаре
+                    async with session.get(f"{API_HOST}/api/api/items/{order_data['item_id']}") as item_response:
+                        if item_response.status == 200:
+                            item_data = await item_response.json()
+                            
+                            # Формируем сообщение для продавца
+                            seller_message = (
+                                "🛍️ У вас новый заказ!\n\n"
+                                f"📱 Товар: {item_data['name']}\n"
+                                f"💰 Сумма: {order_data['total']} RUB\n"
+                                f"🏠 Адрес доставки: {order_data['delivery_address']}\n"
+                                f"📞 Телефон покупателя: {order_data['buyer_phone']}\n\n"
+                                "Пожалуйста, свяжитесь с покупателем для уточнения деталей доставки."
+                            )
+                            
+                            # Отправляем сообщение продавцу
+                            await callback_query.bot.send_message(
+                                chat_id=order_data['seller_telegram_id'],
+                                text=seller_message,
+                                reply_markup=InlineKeyboardMarkup(
+                                    inline_keyboard=[
+                                        [
+                                            InlineKeyboardButton(
+                                                text="📦 Управление заказами",
+                                                callback_data="my_orders_seller"
+                                            )
+                                        ]
+                                    ]
+                                )
+                            )
+                            logger.info(f"Notification sent to seller {order_data['seller_telegram_id']}")
+                except Exception as e:
+                    logger.error(f"Error sending notification to seller: {e}")
             else:
                 # Создаем клавиатуру с кнопкой проверки и возврата в меню
                 keyboard = InlineKeyboardMarkup(

@@ -18,7 +18,12 @@ async def get_categories() -> List[CategoryModel]:
     if not categories:
         return []
 
-    return [CategoryModel(id=category.id, name=category.name) for category in categories]
+    return [CategoryModel(
+        id=category.id, 
+        name=category.name,
+        created_at=category.created_at,
+        updated_at=category.updated_at
+    ) for category in categories]
 
 
 async def create_category(category_data: CategoryCreateModel) -> CategoryModel:
@@ -35,7 +40,12 @@ async def create_category(category_data: CategoryCreateModel) -> CategoryModel:
         session.add(category)
         await session.commit()
         await session.refresh(category)
-        return CategoryModel(id=category.id, name=category.name)
+        return CategoryModel(
+            id=category.id, 
+            name=category.name,
+            created_at=category.created_at,
+            updated_at=category.updated_at
+        )
 
 
 async def update_category(category_id: int, category_data: CategoryUpdateModel) -> CategoryModel:
@@ -60,7 +70,12 @@ async def update_category(category_id: int, category_data: CategoryUpdateModel) 
         category.name = category_data.name
         await session.commit()
         await session.refresh(category)
-        return CategoryModel(id=category.id, name=category.name)
+        return CategoryModel(
+            id=category.id, 
+            name=category.name,
+            created_at=category.created_at,
+            updated_at=category.updated_at
+        )
 
 
 async def delete_category(category_id: int) -> None:

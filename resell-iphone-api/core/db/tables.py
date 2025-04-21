@@ -10,6 +10,8 @@ class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     items = relationship("Item", back_populates="category")
 
