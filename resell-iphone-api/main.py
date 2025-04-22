@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 import uvicorn.logging
+from prometheus_fastapi_instrumentator import Instrumentator
 
 import api_v1
 from core.db.base import Base
@@ -49,6 +50,10 @@ async def lifespan(app: FastAPI):
 def register_app(settings: Settings) -> FastAPI:
     root_app = FastAPI()
     app = FastAPI(lifespan=lifespan)
+    
+    # Инициализация Prometheus метрик
+    instrumentator = Instrumentator()
+    instrumentator.instrument(app).expose(app, include_in_schema=True, should_gzip=True)
     
     # Register health check first to avoid route conflicts
     app.include_router(health.router, prefix="/api/v1")

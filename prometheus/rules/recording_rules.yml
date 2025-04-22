@@ -1,0 +1,44 @@
+groups:
+  - name: fastapi
+    rules:
+      # Метрики производительности FastAPI
+      - record: fastapi_http_requests_total
+        expr: sum(rate(http_requests_total[5m])) by (method, path, status)
+      
+      - record: fastapi_http_request_duration_seconds
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, method, path))
+      
+      - record: fastapi_http_errors_total
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (method, path)
+      
+      # Метрики использования памяти
+      - record: fastapi_memory_usage_bytes
+        expr: process_resident_memory_bytes
+      
+      # Метрики CPU
+      - record: fastapi_cpu_usage_seconds
+        expr: rate(process_cpu_seconds_total[5m])
+
+  - name: postgres
+    rules:
+      # Метрики производительности PostgreSQL
+      - record: postgres_connections_total
+        expr: pg_stat_activity_count
+      
+      - record: postgres_transactions_total
+        expr: rate(pg_stat_database_xact_commit[5m]) + rate(pg_stat_database_xact_rollback[5m])
+      
+      - record: postgres_cache_hit_ratio
+        expr: sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])))
+      
+      # Метрики размера базы данных
+      - record: postgres_database_size_bytes
+        expr: pg_database_size_bytes
+      
+      # Метрики блокировок
+      - record: postgres_locks_total
+        expr: pg_locks_count
+      
+      # Метрики времени выполнения запросов
+      - record: postgres_query_duration_seconds
+        expr: histogram_quantile(0.95, sum(rate(pg_stat_activity_query_duration_seconds_bucket[5m])) by (le)) 
