@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 import uvicorn.logging
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 import api_v1
 from core.db.base import Base
@@ -53,6 +53,11 @@ def register_app(settings: Settings) -> FastAPI:
     
     # Инициализация Prometheus метрик
     instrumentator = Instrumentator()
+    instrumentator.add(metrics.latency())
+    instrumentator.add(metrics.request_size())
+    instrumentator.add(metrics.response_size())
+    instrumentator.add(metrics.requests())
+    instrumentator.add(metrics.combined_size())
     instrumentator.instrument(app).expose(app, include_in_schema=True, should_gzip=True)
     
     # Register health check first to avoid route conflicts
