@@ -6,6 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from main import app
 from database import Base
 from config import settings
+from fastapi import FastAPI
+from .mocks import override_get_db
+from deps import DatabaseMarker
 
 # Создаем тестовую базу данных
 TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/test_db"
@@ -39,7 +42,17 @@ async def test_session(test_engine):
         yield session
 
 @pytest.fixture
-async def client():
-    """Create a test client for the FastAPI application."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+async def test_app():
+    """
+    Create a fresh FastAPI app for each test with mocked dependencies.
+    """
+    app.dependency_overrides[DatabaseMarker] = override_get_db
+    return app
+
+@pytest.fixture
+async def client(test_app):
+    """
+    Create a test client with mocked dependencies.
+    """
+    async with AsyncClient(app=test_app, base_url="http://test") as client:
         yield client 
